@@ -2,294 +2,266 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Substratum - Horde Protocol</title>
+    <title>Substratum - Complete Protocol</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; color: #0f0; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; color: #0f0; }
         
-        /* UI OVERLAYS */
-        #main-menu { 
-            position: absolute; width: 100%; height: 100%; background: #000; 
-            z-index: 200; display: flex; flex-direction: column; align-items: center; 
-            justify-content: center; text-align: center;
-        }
-        .menu-btn { 
-            padding: 15px 40px; background: none; border: 2px solid #0f0; color: #0f0; 
-            font-family: 'Courier New'; cursor: pointer; margin: 10px; transition: 0.3s; font-size: 18px;
-        }
-        .menu-btn:hover { background: #0f0; color: #000; box-shadow: 0 0 15px #0f0; }
-        input { padding: 10px; background: #111; border: 1px solid #0f0; color: #0f0; text-align: center; margin-bottom: 10px; font-family: 'Courier New'; }
+        /* UI ELEMENTS */
+        #radar-locator { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 450px; height: 35px; border-bottom: 2px solid #0f0; background: rgba(0,20,0,0.8); text-align: center; line-height: 35px; font-size: 13px; z-index: 100; display: none; }
+        #net-monitor { position: absolute; top: 10px; right: 10px; text-align: right; font-size: 11px; z-index: 300; border: 1px solid #0f0; padding: 8px; background: rgba(0,20,0,0.9); }
+        
+        #main-menu, #blocker { position: absolute; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 5000; background: #000; }
+        #blocker { background: rgba(0,0,0,0.8); display: none; }
+        .menu-btn { padding: 12px 30px; background: none; border: 1px solid #0f0; color: #0f0; cursor: pointer; margin: 10px; font-family: 'Courier New'; font-size: 16px; width: 250px;}
+        .menu-btn:hover { background: #0f0; color: #000; }
+        
+        #chat-container { position: absolute; bottom: 100px; left: 20px; width: 300px; height: 180px; background: rgba(0,20,0,0.6); border: 1px solid #0f0; display: none; flex-direction: column; z-index: 1000; }
+        #chat-log { flex-grow: 1; overflow-y: auto; padding: 8px; font-size: 12px; }
+        #chat-input { background: #000; border: none; border-top: 1px solid #0f0; color: #0f0; padding: 8px; font-family: 'Courier New'; }
 
-        /* HUD Elements */
-        #hud { position: absolute; bottom: 20px; left: 20px; z-index: 20; pointer-events: none; display: none; }
-        #floor-info { position: absolute; top: 20px; left: 20px; color: #fff; z-index: 20; display: none; }
-        .lethal { color: #f00; font-weight: bold; text-shadow: 0 0 8px red; }
-        .bar-container { width: 200px; height: 10px; border: 1px solid #333; background: #000; margin: 5px 0; }
-        #hp-fill { height: 100%; background: #f00; width: 100%; transition: width 0.2s; }
+        #vitals-hud { position: absolute; bottom: 20px; left: 20px; z-index: 1000; display: none; }
+        .bar { width: 200px; height: 12px; border: 1px solid #0f0; background: #000; margin-top: 5px; }
+        #hp-fill { height: 100%; background: #f00; width: 100%; }
         #stamina-fill { height: 100%; background: #0f0; width: 100%; }
-        #minimap-container { position: absolute; top: 20px; right: 20px; width: 150px; height: 150px; border: 2px solid #0f0; background: rgba(0,0,0,0.8); display: none; }
-        #minimap { width: 150px; height: 150px; }
-        #event-banner { position: absolute; top: 20%; width: 100%; text-align: center; color: #ff0; font-size: 28px; z-index: 50; display: none; }
-        #blocker, #death-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; z-index: 100; cursor: pointer; }
+        #data-hud { position: absolute; bottom: 20px; right: 20px; text-align: right; z-index: 1000; display: none; border: 1px solid #0f0; padding: 10px; background: rgba(0,20,0,0.5); }
     </style>
 </head>
 <body>
 
+    <div id="radar-locator">EXIT: <span id="door-dist">--</span>m | <span id="secondary-scanner">SCANNING...</span></div>
+    <div id="net-monitor">NETWORK: <span id="net-state">CONNECTING...</span><br>PARTY: <span id="party-state">OFFLINE</span></div>
+
     <div id="main-menu">
-        <h1 style="color:#0f0; font-size:60px; letter-spacing:10px; margin-bottom:40px;">SUBSTRATUM</h1>
-        <div id="initial-buttons">
-            <button onclick="startSolo()" class="menu-btn">SOLO RUN</button>
-            <button onclick="showPartyMenu()" class="menu-btn">PARTY</button>
+        <h1 style="letter-spacing:10px;">SUBSTRATUM</h1>
+        <div id="initial-actions" style="display:flex; flex-direction:column;">
+            <button onclick="startGame(false)" class="menu-btn">SOLO RUN</button>
+            <button onclick="showPartyMenu()" class="menu-btn">PARTY MODE</button>
         </div>
-        
-        <div id="party-menu" style="display:none; flex-direction:column;">
-            <button onclick="createParty()" class="menu-btn">CREATE PARTY</button>
-            <button onclick="showJoinInput()" class="menu-btn">JOIN PARTY</button>
-            <button onclick="backToMain()" class="menu-btn" style="border-color:#555; color:#555;">BACK</button>
-            <p id="party-code-display" style="color:#0ff; margin-top:10px;"></p>
-        </div>
-
-        <div id="join-input" style="display:none; flex-direction:column;">
-            <input type="text" id="join-code" placeholder="ENTER 6-DIGIT CODE">
-            <button onclick="joinParty()" class="menu-btn">CONNECT</button>
-            <button onclick="backToParty()" class="menu-btn" style="border-color:#555; color:#555;">BACK</button>
+        <div id="party-options" style="display:none; flex-direction:column; align-items:center;">
+            <input type="text" id="join-code" placeholder="ENTER ROOM CODE" style="background:#000; color:#0f0; border:1px solid #0f0; text-align:center; padding:12px; margin:10px; width: 220px; font-family:'Courier New';">
+            <button onclick="startGame(true, true)" class="menu-btn">JOIN SESSION</button>
+            <button onclick="startGame(true, false)" class="menu-btn">HOST SESSION</button>
+            <button onclick="hidePartyMenu()" style="color:#555; background:none; border:none; cursor:pointer; margin-top:10px;">[ BACK ]</button>
         </div>
     </div>
 
-    <div id="event-banner">FLOOR EVENT ACTIVATED</div>
-    <div id="floor-info">FLOOR: <span id="floor-num">1</span> | ENTITIES DETECTED: <span id="ent-count-ui">1</span></div>
-    <div id="minimap-container"><canvas id="minimap" width="150" height="150"></canvas></div>
-    
-    <div id="hud">
-        HEALTH <div class="bar-container"><div id="hp-fill"></div></div>
-        STAMINA <div class="bar-container"><div id="stamina-fill"></div></div>
-        ARTIFACTS: <span id="art-count">0</span> / <span id="art-req">5</span>
+    <div id="blocker"><h1>SYSTEM READY</h1><p>CLICK TO SYNC</p></div>
+
+    <div id="chat-container">
+        <div id="chat-log">SYSTEM: Neural Link Active. [ENTER] to chat.</div>
+        <input type="text" id="chat-input" placeholder="...">
     </div>
 
-    <div id="blocker"><h1>PAUSED</h1><p>CLICK TO RESUME</p></div>
-    <div id="death-screen"><h1>TERMINATED</h1><p id="death-cause"></p><p>CLICK TO RE-INITIALIZE</p></div>
+    <div id="vitals-hud">
+        HP <div class="bar"><div id="hp-fill"></div></div>
+        SP <div class="bar"><div id="stamina-fill"></div></div>
+    </div>
+
+    <div id="data-hud">
+        FLOOR: <span id="floor-num">1</span><br>
+        ARTIFACTS: <span id="art-count">0</span> / 5
+    </div>
 
     <script>
-        let scene, camera, renderer, controls, socket;
-        let prevTime = performance.now();
+        let scene, camera, renderer, controls, socket, flashlight, flashTarget;
         let moveF = false, moveB = false, moveL = false, moveR = false, isSprint = false;
         let velocity = new THREE.Vector3(), direction = new THREE.Vector3();
-        let hp = 100, stamina = 100, artifacts = 0, currentFloor = 1, gameActive = false;
-        let activeEntities = [], walls = [], collectibles = [], exitPortal;
-        let otherPlayers = {}; // For Multiplayer Ghosts
-        let currentRoom = null;
+        let hp = 100, stamina = 100, artifacts = 0, currentFloor = 1;
+        let walls = [], collectibles = [], exitPortal, currentRoom = null;
+        let prevTime = performance.now();
 
-        const ENTITY_DB = [
-            { name: "Lurker", class: "STABLE", speed: 4, color: 0xffaa00 },
-            { name: "Twitcher", class: "STABLE", speed: 6, color: 0xff8800 },
-            { name: "Heavy Guard", class: "STABLE", speed: 3, color: 0xffcc00 },
-            { name: "Glitch Drone", class: "STABLE", speed: 5, color: 0xffff00 },
-            { name: "Executioner", class: "LETHAL", speed: 5, color: 0xff0000 },
-            { name: "Screamer", class: "LETHAL", speed: 9, color: 0xff0055 }
-        ];
+        // POINTING TO THE LIVE RENDER SERVER
+        socket = io('https://substratum-game.onrender.com', { transports: ['websocket'] });
 
-        // --- PARTY & SOCKET LOGIC ---
-        // Change URL to your Glitch/Server address when ready
-        socket = io('http://localhost:3000', { autoConnect: false });
+        socket.on('connect', () => { 
+            document.getElementById('net-state').innerText = "CONNECTED"; 
+            document.getElementById('net-state').style.color = "#0f0";
+        });
 
-        function startSolo() {
-            document.getElementById('main-menu').style.display = 'none';
-            document.getElementById('hud').style.display = 'block';
-            document.getElementById('floor-info').style.display = 'block';
-            document.getElementById('minimap-container').style.display = 'block';
-            init();
-            animate();
-            controls.lock();
+        socket.on('connect_error', () => {
+            document.getElementById('net-state').innerText = "LINK FAILURE";
+            document.getElementById('net-state').style.color = "#f00";
+        });
+
+        socket.on('chat-msg', (data) => {
+            const log = document.getElementById('chat-log');
+            log.innerHTML += `<div>[${data.user}]: ${data.msg}</div>`;
+            log.scrollTop = log.scrollHeight;
+        });
+
+        function showPartyMenu() { 
+            document.getElementById('initial-actions').style.display = 'none'; 
+            document.getElementById('party-options').style.display = 'flex'; 
+        }
+        function hidePartyMenu() { 
+            document.getElementById('initial-actions').style.display = 'flex'; 
+            document.getElementById('party-options').style.display = 'none'; 
         }
 
-        function showPartyMenu() {
-            document.getElementById('initial-buttons').style.display = 'none';
-            document.getElementById('party-menu').style.display = 'flex';
-        }
-
-        function backToMain() {
-            document.getElementById('initial-buttons').style.display = 'flex';
-            document.getElementById('party-menu').style.display = 'none';
-        }
-
-        function showJoinInput() {
-            document.getElementById('party-menu').style.display = 'none';
-            document.getElementById('join-input').style.display = 'flex';
-        }
-
-        function createParty() {
-            const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-            currentRoom = code;
-            document.getElementById('party-code-display').innerText = "CODE: " + code;
-            socket.connect();
-            socket.emit('create-room', code);
-            startSolo(); // Start game once code is generated
-        }
-
-        function joinParty() {
-            const code = document.getElementById('join-code').value.toUpperCase();
-            if(code.length > 0) {
-                currentRoom = code;
-                socket.connect();
-                socket.emit('join-room', code);
-                startSolo();
+        function startGame(isParty, isJoining) {
+            if(isParty) {
+                currentRoom = isJoining ? document.getElementById('join-code').value.toUpperCase() : Math.random().toString(36).substring(7).toUpperCase();
+                if(currentRoom) {
+                    socket.emit('join-room', currentRoom);
+                    document.getElementById('party-state').innerText = "ROOM: " + currentRoom;
+                    if(!isJoining) alert("YOUR ROOM CODE: " + currentRoom);
+                }
             }
+            document.getElementById('main-menu').style.display = 'none';
+            document.getElementById('blocker').style.display = 'flex';
+            init();
         }
 
-        // --- CORE GAME ENGINE ---
         function init() {
             scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x000000, 0.08);
             camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+
+            // SUPER BRIGHT FLASHLIGHT
+            flashlight = new THREE.SpotLight(0xffffff, 40, 180, Math.PI/4, 0.3, 1);
+            flashTarget = new THREE.Object3D();
+            scene.add(flashTarget);
+            flashlight.target = flashTarget;
+            scene.add(flashlight);
+            scene.add(new THREE.AmbientLight(0x0a0a0a));
+
             renderer = new THREE.WebGLRenderer({ antialias: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
             
             controls = new THREE.PointerLockControls(camera, document.body);
             document.getElementById('blocker').addEventListener('click', () => controls.lock());
-            document.getElementById('death-screen').addEventListener('click', () => location.reload());
             
-            controls.addEventListener('lock', () => { gameActive = true; document.getElementById('blocker').style.display='none'; });
-            controls.addEventListener('unlock', () => { gameActive = false; if(hp > 0) document.getElementById('blocker').style.display='flex'; });
-
-            window.addEventListener('keydown', (e) => {
-                if(e.code==='KeyW') moveF=true; if(e.code==='KeyS') moveB=true;
-                if(e.code==='KeyA') moveL=true; if(e.code==='KeyD') moveR=true;
-                if(e.shiftKey) isSprint=true;
-                if(e.code==='KeyE') checkInteract();
-            });
-            window.addEventListener('keyup', (e) => {
-                if(e.code==='KeyW') moveF=false; if(e.code==='KeyS') moveB=false;
-                if(e.code==='KeyA') moveL=false; if(e.code==='KeyD') moveR=false;
-                if(!e.shiftKey) isSprint=false;
-            });
-
-            // Listen for other players
-            socket.on('player-update', (data) => {
-                if(!otherPlayers[data.id]) {
-                    const ghostGeo = new THREE.BoxGeometry(1, 2, 1);
-                    const ghostMat = new THREE.MeshBasicMaterial({color: 0x00aaff, wireframe: true});
-                    const ghost = new THREE.Mesh(ghostGeo, ghostMat);
-                    scene.add(ghost);
-                    otherPlayers[data.id] = ghost;
-                }
-                otherPlayers[data.id].position.copy(data.pos);
+            controls.addEventListener('lock', () => {
+                document.getElementById('blocker').style.display = 'none';
+                ["vitals-hud", "data-hud", "chat-container", "radar-locator"].forEach(id => document.getElementById(id).style.display = 'flex');
             });
 
             generateFloor();
+            animate();
         }
 
         function generateFloor() {
             walls.forEach(w => scene.remove(w));
             collectibles.forEach(c => scene.remove(c));
-            activeEntities.forEach(e => scene.remove(e.mesh));
             if(exitPortal) scene.remove(exitPortal);
+            walls = []; collectibles = []; artifacts = 0;
 
-            walls = []; collectibles = []; activeEntities = []; artifacts = 0; hp = 100;
-            let artReq = 4 + currentFloor;
-            document.getElementById('art-req').innerText = artReq;
-            document.getElementById('floor-num').innerText = currentFloor;
-            document.getElementById('art-count').innerText = "0";
-            camera.position.set(0, 1.6, 0);
-
-            // Walls & Environment
-            for(let i=0; i<60; i++) {
-                const wall = new THREE.Mesh(new THREE.BoxGeometry(4, 10, 4), new THREE.MeshBasicMaterial({color: 0x111111}));
-                let rx = (Math.random()-0.5)*120; let rz = (Math.random()-0.5)*120;
-                if(Math.abs(rx) < 15 && Math.abs(rz) < 15) continue;
-                wall.position.set(rx, 5, rz); scene.add(wall); walls.push(wall);
+            const GRID = 14; const SIZE = 12;
+            let mazeData = Array(GRID).fill().map(() => Array(GRID).fill(1));
+            for(let y=1; y<GRID-1; y+=2) for(let x=1; x<GRID-1; x+=2) {
+                mazeData[y][x] = 0;
+                if(Math.random() > 0.45 && x < GRID-2) mazeData[y][x+1] = 0; else if(y < GRID-2) mazeData[y+1][x] = 0;
             }
 
-            // Artifacts
-            for(let i=0; i<artReq; i++) {
-                const art = new THREE.Mesh(new THREE.TorusKnotGeometry(0.4, 0.1, 32, 8), new THREE.MeshBasicMaterial({color: 0x00ffff}));
-                art.position.set((Math.random()-0.5)*100, 1.2, (Math.random()-0.5)*100);
-                art.userData = {type: "artifact"}; scene.add(art); collectibles.push(art);
+            const wallGeo = new THREE.BoxGeometry(SIZE, 18, SIZE);
+            const wallMat = new THREE.MeshStandardMaterial({color: 0x111111});
+            for(let y=0; y<GRID; y++) for(let x=0; x<GRID; x++) {
+                if(mazeData[y][x] === 1) {
+                    const w = new THREE.Mesh(wallGeo, wallMat);
+                    w.position.set(x*SIZE, 9, y*SIZE);
+                    w.userData.box = new THREE.Box3().setFromObject(w);
+                    scene.add(w); walls.push(w);
+                }
             }
 
-            // Entity Scaling (Every 3 floors)
-            let entityLimit = Math.floor((currentFloor - 1) / 3) + 1;
-            document.getElementById('ent-count-ui').innerText = entityLimit;
-            for(let i=0; i < entityLimit; i++) {
-                const data = ENTITY_DB[Math.floor(Math.random()*ENTITY_DB.length)];
-                const geo = data.class === "LETHAL" ? new THREE.IcosahedronGeometry(1.5, 0) : new THREE.BoxGeometry(1.2, 2.5, 1.2);
-                const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color: data.color, wireframe: data.class === "LETHAL"}));
-                mesh.position.set((Math.random()-0.5)*100, 1.25, (Math.random()-0.5)*100);
-                activeEntities.push({ mesh, data }); scene.add(mesh);
-            }
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshStandardMaterial({color: 0x050505}));
+            floor.rotation.x = -Math.PI/2;
+            scene.add(floor);
+            camera.position.set(SIZE, 1.6, SIZE);
 
-            exitPortal = new THREE.Mesh(new THREE.BoxGeometry(6, 12, 1), new THREE.MeshBasicMaterial({color: 0xffffff, transparent:true, opacity:0}));
-            exitPortal.position.set(0, 5, -55); scene.add(exitPortal);
+            exitPortal = new THREE.Mesh(new THREE.BoxGeometry(6,12,6), new THREE.MeshBasicMaterial({color: 0x00ff00, wireframe: true}));
+            exitPortal.position.set((GRID-2)*SIZE, 6, (GRID-2)*SIZE);
+            scene.add(exitPortal);
+
+            for(let i=0; i<5; i++) {
+                const a = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({color: 0x00ffff}));
+                a.position.set(Math.random()*GRID*SIZE, 1, Math.random()*GRID*SIZE);
+                scene.add(a); collectibles.push(a);
+            }
         }
 
-        function checkInteract() {
-            collectibles.forEach((c, i) => {
-                if(camera.position.distanceTo(c.position) < 4) {
-                    artifacts++;
-                    document.getElementById('art-count').innerText = artifacts;
-                    scene.remove(c); collectibles.splice(i, 1);
-                }
-            });
-            if(artifacts >= (4 + currentFloor)) {
-                exitPortal.material.opacity = 0.5;
-                if(camera.position.distanceTo(exitPortal.position) < 5) { currentFloor++; generateFloor(); }
+        function isColliding(pos) {
+            // Player hitbox 3.5x3.5
+            const playerBox = new THREE.Box3().setFromCenterAndSize(pos, new THREE.Vector3(3.5, 4, 3.5));
+            for(let wall of walls) {
+                if(playerBox.intersectsBox(wall.userData.box)) return true;
             }
+            return false;
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            if(!gameActive) return;
-
             const time = performance.now();
-            const delta = Math.min((time - prevTime) / 1000, 0.1);
+            const delta = (time - prevTime) / 1000;
 
-            let speed = (isSprint && stamina > 0 ? 140 : 85);
-            if(isSprint && stamina > 0 && (moveF||moveB||moveL||moveR)) stamina -= 35 * delta;
-            else stamina = Math.min(100, stamina + 20 * delta);
+            if(controls.isLocked) {
+                flashlight.position.copy(camera.position);
+                const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+                flashTarget.position.copy(camera.position).add(dir);
 
-            velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta;
-            direction.z = Number(moveF) - Number(moveB); direction.x = Number(moveR) - Number(moveL);
-            direction.normalize();
-            if (moveF || moveB) velocity.z -= direction.z * speed * delta;
-            if (moveL || moveR) velocity.x -= direction.x * speed * delta;
-            controls.moveRight(-velocity.x * delta); controls.moveForward(-velocity.z * delta);
+                let speed = (isSprint && stamina > 0) ? 95 : 50;
+                if(isSprint && (moveF || moveB || moveL || moveR)) stamina = Math.max(0, stamina - 35 * delta);
+                else stamina = Math.min(100, stamina + 20 * delta);
 
-            // SEND POSITION TO SERVER
-            if(socket.connected && currentRoom) {
-                socket.emit('move', { room: currentRoom, pos: camera.position });
+                velocity.x -= velocity.x * 10.0 * delta; velocity.z -= velocity.z * 10.0 * delta;
+                direction.z = Number(moveF) - Number(moveB); direction.x = Number(moveR) - Number(moveL);
+                direction.normalize();
+                if (moveF || moveB) velocity.z -= direction.z * speed * 5 * delta;
+                if (moveL || moveR) velocity.x -= direction.x * speed * 5 * delta;
+
+                // FLUID SLIDING COLLISION
+                const nextX = camera.position.clone();
+                const rightVec = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+                nextX.add(rightVec.multiplyScalar(velocity.x * delta));
+                if (!isColliding(nextX)) controls.moveRight(-velocity.x * delta);
+                else velocity.x = 0;
+
+                const nextZ = camera.position.clone();
+                const forwardVec = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 2);
+                nextZ.add(forwardVec.multiplyScalar(velocity.z * delta));
+                if (!isColliding(nextZ)) controls.moveForward(-velocity.z * delta);
+                else velocity.z = 0;
+
+                document.getElementById('door-dist').innerText = Math.floor(camera.position.distanceTo(exitPortal.position));
+                if(camera.position.distanceTo(exitPortal.position) < 5 && artifacts >= 5) { 
+                    currentFloor++; generateFloor(); 
+                    document.getElementById('floor-num').innerText = currentFloor;
+                }
             }
 
-            // ENTITY AI
-            activeEntities.forEach(entObj => {
-                const ent = entObj.mesh;
-                const chase = new THREE.Vector3().subVectors(camera.position, ent.position).normalize();
-                ent.position.add(chase.multiplyScalar(entObj.data.speed * delta));
-                ent.lookAt(camera.position.x, 1.25, camera.position.z);
-                if(ent.position.distanceTo(camera.position) < 2.5) {
-                    hp -= entObj.data.class === "LETHAL" ? 100 : 45 * delta;
-                    if(hp <= 0) {
-                        gameActive=false; 
-                        document.getElementById('death-screen').style.display='flex'; 
-                        document.getElementById('death-cause').innerText="KILLED BY " + entObj.data.name; 
-                    }
-                }
-            });
-
-            // HUD & MINIMAP
             document.getElementById('hp-fill').style.width = hp + '%';
             document.getElementById('stamina-fill').style.width = stamina + '%';
-            const ctx = document.getElementById('minimap').getContext('2d');
-            ctx.fillStyle = '#000'; ctx.fillRect(0,0,150,150);
-            const scale = 1.5;
-            walls.forEach(w => { ctx.fillStyle = '#222'; ctx.fillRect((w.position.x - camera.position.x)*scale+75, (w.position.z - camera.position.z)*scale+75, 4, 4); });
-            collectibles.forEach(c => { ctx.fillStyle = '#0ff'; ctx.fillRect((c.position.x - camera.position.x)*scale+75, (c.position.z - camera.position.z)*scale+75, 5, 5); });
-            activeEntities.forEach(e => { ctx.fillStyle = 'red'; ctx.fillRect((e.mesh.position.x - camera.position.x)*scale+75, (e.mesh.position.z - camera.position.z)*scale+75, 6, 6); });
-            ctx.fillStyle = '#0f0'; ctx.beginPath(); ctx.arc(75, 75, 3, 0, Math.PI*2); ctx.fill();
-
-            prevTime = time;
+            document.getElementById('art-count').innerText = artifacts;
             renderer.render(scene, camera);
+            prevTime = time;
         }
+
+        window.addEventListener('keydown', (e) => {
+            if(e.code === 'Enter') {
+                const input = document.getElementById('chat-input');
+                if(document.activeElement === input) {
+                    if(input.value) {
+                        socket.emit('chat-msg', {room: currentRoom, msg: input.value, user: "DIVER"});
+                    }
+                    input.value = ""; input.blur(); controls.lock();
+                } else { controls.unlock(); input.focus(); }
+            }
+            if(e.code==='KeyW') moveF=true; if(e.code==='KeyS') moveB=true;
+            if(e.code==='KeyA') moveL=true; if(e.code==='KeyD') moveR=true;
+            if(e.shiftKey) isSprint=true;
+            if(e.code==='KeyE') {
+                collectibles.forEach((c, i) => { if(camera.position.distanceTo(c.position) < 6) { artifacts++; scene.remove(c); collectibles.splice(i,1); } });
+            }
+        });
+        window.addEventListener('keyup', (e) => {
+            if(e.code==='KeyW') moveF=false; if(e.code==='KeyS') moveB=false;
+            if(e.code==='KeyA') moveL=false; if(e.code==='KeyD') moveR=false;
+            if(!e.shiftKey) isSprint=false;
+        });
     </script>
 </body>
 </html>
