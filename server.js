@@ -3,6 +3,23 @@ const app = express();
 const http = require("http").Server(app);
 const io = require("socket.io")(http, { cors: { origin: "*" } });
 const path = require("path");
+const express = require('express');
+const app = express();
+const path = require('path');
+const server = require('http').createServer(app);
+const io = require('socket.io')(server);
+
+// This tells Render to show your index.html to anyone who visits the link
+app.use(express.static(__dirname)); 
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Your existing Socket.io logic goes here...
+io.on('connection', (socket) => { /* ... */ });
+
+server.listen(process.env.PORT || 3000);
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -49,4 +66,5 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
 http.listen(PORT, () => console.log(`Server live on port ${PORT}`));
